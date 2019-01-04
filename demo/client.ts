@@ -113,9 +113,9 @@ function createTerminal(): void {
   });
 
   addDomListener(actionElements.findPrevious, 'keyup', (e) => {
-    const searchOptions = getSearchOptions();
-    searchOptions.incremental = e.key !== `Enter`;
-    term.findPrevious(actionElements.findPrevious.value, searchOptions);
+    if (e.key === `Enter`) {
+      term.findPrevious(actionElements.findPrevious.value, getSearchOptions());
+    }
   });
 
   // fit is called within a setTimeout, cols and rows need this.
@@ -205,8 +205,7 @@ function initOptions(term: TerminalType): void {
     fontFamily: null,
     fontWeight: ['normal', 'bold', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
     fontWeightBold: ['normal', 'bold', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
-    rendererType: ['dom', 'canvas', 'webgl'],
-    experimentalBufferLineImpl: ['JsArray', 'TypedArray']
+    rendererType: ['dom', 'canvas', 'webgl']
   };
   const options = Object.keys((<any>term)._core.options);
   const booleanOptions = [];
