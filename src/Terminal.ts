@@ -52,6 +52,7 @@ import { IKeyboardEvent } from './common/Types';
 import { evaluateKeyboardEvent } from './core/input/Keyboard';
 import { KeyboardResultType, ICharset } from './core/Types';
 import { clone } from './common/Clone';
+import { WebglRenderer } from './renderer/webgl/WebglRenderer';
 
 // Let it work inside Node.js for automated testing purposes.
 const document = (typeof window !== 'undefined') ? window.document : null;
@@ -765,6 +766,7 @@ export class Terminal extends EventEmitter implements ITerminal, IDisposable, II
     switch (this.options.rendererType) {
       case 'canvas': this.renderer = new Renderer(this, this.options.theme); break;
       case 'dom': this.renderer = new DomRenderer(this, this.options.theme); break;
+      case 'webgl': this.renderer = new WebglRenderer(this, this.options.theme); break;
       default: throw new Error(`Unrecognized rendererType "${this.options.rendererType}"`);
     }
     this.register(this.renderer);

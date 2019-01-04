@@ -201,11 +201,11 @@ function initOptions(term: TerminalType): void {
     bellSound: null,
     bellStyle: ['none', 'sound'],
     cursorStyle: ['block', 'underline', 'bar'],
-    experimentalCharAtlas: ['none', 'static', 'dynamic'],
+    experimentalCharAtlas: ['none', 'static', 'dynamic', 'webgl'],
     fontFamily: null,
     fontWeight: ['normal', 'bold', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
     fontWeightBold: ['normal', 'bold', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
-    rendererType: ['dom', 'canvas'],
+    rendererType: ['dom', 'canvas', 'webgl'],
     experimentalBufferLineImpl: ['JsArray', 'TypedArray']
   };
   const options = Object.keys((<any>term)._core.options);

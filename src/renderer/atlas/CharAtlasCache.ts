@@ -11,11 +11,13 @@ import DynamicCharAtlas from './DynamicCharAtlas';
 import NoneCharAtlas from './NoneCharAtlas';
 import StaticCharAtlas from './StaticCharAtlas';
 import { ICharAtlasConfig } from './Types';
+import WebglCharAtlas from '../webgl/WebglCharAtlas';
 
 const charAtlasImplementations = {
   'none': NoneCharAtlas,
   'static': StaticCharAtlas,
-  'dynamic': DynamicCharAtlas
+  'dynamic': DynamicCharAtlas,
+  'webgl': WebglCharAtlas
 };
 
 interface ICharAtlasCacheEntry {
@@ -38,9 +40,10 @@ export function acquireCharAtlas(
   terminal: ITerminal,
   colors: IColorSet,
   scaledCharWidth: number,
-  scaledCharHeight: number
+  scaledCharHeight: number,
+  devicePixelRatio?: number
 ): BaseCharAtlas {
-  const newConfig = generateConfig(scaledCharWidth, scaledCharHeight, terminal, colors);
+  const newConfig = generateConfig(scaledCharWidth, scaledCharHeight, terminal, colors, devicePixelRatio);
 
   // Check to see if the terminal already owns this config
   for (let i = 0; i < charAtlasCache.length; i++) {
