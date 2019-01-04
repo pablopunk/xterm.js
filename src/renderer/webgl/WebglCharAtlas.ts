@@ -85,7 +85,7 @@ export default class WebglCharAtlas extends BaseCharAtlas {
     this._tmpCtx = this._tmpCanvas.getContext('2d', {alpha: this._config.allowTransparency});
 
     // This is useful for debugging
-    document.body.appendChild(this.cacheCanvas);
+    // document.body.appendChild(this.cacheCanvas);
   }
 
   public dispose(): void {

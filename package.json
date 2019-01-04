@@ -1,5 +1,5 @@
 {
-  "name": "xterm",
+  "name": "@zeit/xterm",
   "description": "Full xterm terminal, in your browser",
   "version": "3.9.1",
   "main": "lib/public/Terminal.js",
