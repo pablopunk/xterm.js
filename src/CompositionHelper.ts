@@ -21,6 +21,9 @@ export class CompositionHelper {
    * IME. This variable determines whether the compositionText should be displayed on the UI.
    */
   private _isComposing: boolean;
+  public get isComposing(): boolean {
+    return this._isComposing;
+  }
 
   /**
    * The position within the input textarea's value of the current composition.
@@ -190,6 +193,10 @@ export class CompositionHelper {
    *   necessary as the IME events across browsers are not consistently triggered.
    */
   public updateCompositionElements(dontRecurse?: boolean): void {
+    if (!this._isComposing) {
+      return;
+    }
+
     if (this._terminal.buffer.isCursorInViewport) {
       const cellHeight = Math.ceil(this._terminal.charMeasure.height * this._terminal.options.lineHeight);
       const cursorTop = this._terminal.buffer.y * cellHeight;

@@ -402,4 +402,7 @@ export class MockCompositionHelper implements ICompositionHelper {
   keydown(ev: KeyboardEvent): boolean {
     return true;
   }
+  get isComposing(): boolean {
+    throw new Error('Method not implemented.');
+  }
 }
