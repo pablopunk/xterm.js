@@ -92,7 +92,7 @@ export class CompositionHelper {
       if (ev.keyCode === 229) {
         // Continue composing if the keyCode is the "composition character"
         return false;
-      } else if (ev.keyCode === 16 || ev.keyCode === 17 || ev.keyCode === 18) {
+      } else if (ev.keyCode === 16 || ev.keyCode === 17 || ev.keyCode === 18 || ev.keyCode === 91 || ev.keyCode === 92) {
         // Continue composing if the keyCode is a modifier key
         return false;
       }
