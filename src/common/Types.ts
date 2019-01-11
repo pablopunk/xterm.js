@@ -25,7 +25,7 @@ export interface IKeyboardEvent {
  * There's a @types/dom-inputevent but at the moment it's outdated and missing
  * some properties (e.g. inputType). So in the meantime we're using this instead
  */
-export interface IInputEvent {
+export interface IDOMInputEvent {
   readonly data?: string;
   readonly inputType?: string;
 }
