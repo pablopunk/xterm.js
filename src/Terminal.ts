@@ -602,13 +602,6 @@ export class Terminal extends EventEmitter implements ITerminal, IDisposable, II
   private _bindKeys(): void {
     const self = this;
 
-    this.register(addDisposableDomListener(this.element, 'input', function (ev: IInputEvent): void {
-      if (document.activeElement !== this) {
-        return;
-      }
-      self._onInput(ev);
-    }, true));
-
     this.register(addDisposableDomListener(this.element, 'keydown', function (ev: KeyboardEvent): void {
       if (document.activeElement !== this) {
         return;
