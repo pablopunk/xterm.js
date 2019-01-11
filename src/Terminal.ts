@@ -1554,7 +1554,6 @@ export class Terminal extends EventEmitter implements ITerminal, IDisposable, II
       this.showCursor();
       this.handler(event.data);
     }
-    this.textarea.value = '';
   }
 
   /**
