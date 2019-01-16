@@ -102,6 +102,7 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
   }
 
   public dispose(): void {
+    super.dispose();
     this._renderLayers.forEach(l => l.dispose());
     this._terminal.screenElement.removeChild(this._canvas);
   }
