@@ -108,6 +108,10 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
 
   public onIntersectionChange(entry: IntersectionObserverEntry): void {
     this._isPaused = entry.intersectionRatio === 0;
+    if (this._gl.isContextLost()) {
+      this._terminal.recreateRenderer();
+      return;
+    }
     if (!this._isPaused && this._needsFullRefresh) {
       this._terminal.refresh(0, this._terminal.rows - 1);
     }

@@ -157,6 +157,9 @@ export class MockTerminal implements ITerminal {
   showCursor(): void {
     throw new Error('Method not implemented.');
   }
+  recreateRenderer(): void {
+    throw new Error('Method not implemented.');
+  }
   refresh(start: number, end: number): void {
     throw new Error('Method not implemented.');
   }
