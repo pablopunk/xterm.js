@@ -48,11 +48,12 @@ import { ScreenDprMonitor } from './ui/ScreenDprMonitor';
 import { ITheme, IMarker, IDisposable } from 'xterm';
 import { removeTerminalFromCache } from './renderer/atlas/CharAtlasCache';
 import { DomRenderer } from './renderer/dom/DomRenderer';
-import { IKeyboardEvent } from './common/Types';
+import { IKeyboardEvent, IDOMInputEvent } from './common/Types';
 import { evaluateKeyboardEvent } from './core/input/Keyboard';
 import { KeyboardResultType, ICharset } from './core/Types';
 import { clone } from './common/Clone';
 import { WebglRenderer } from './renderer/webgl/WebglRenderer';
+import { isEmoji } from './CharWidth';
 
 // Let it work inside Node.js for automated testing purposes.
 const document = (typeof window !== 'undefined') ? window.document : null;
@@ -594,6 +595,7 @@ export class Terminal extends EventEmitter implements ITerminal, IDisposable, II
    */
   private _bindKeys(): void {
     const self = this;
+
     this.register(addDisposableDomListener(this.element, 'keydown', function (ev: KeyboardEvent): void {
       if (document.activeElement !== this) {
         return;
@@ -616,13 +618,42 @@ export class Terminal extends EventEmitter implements ITerminal, IDisposable, II
       self._keyUp(ev);
     }, true));
 
+    this.register(addDisposableDomListener(this.textarea, 'input', (ev: IDOMInputEvent) => this._onInput(ev), true));
     this.register(addDisposableDomListener(this.textarea, 'keydown', (ev: KeyboardEvent) => this._keyDown(ev), true));
     this.register(addDisposableDomListener(this.textarea, 'keypress', (ev: KeyboardEvent) => this._keyPress(ev), true));
     this.register(addDisposableDomListener(this.textarea, 'compositionstart', () => this._compositionHelper.compositionstart()));
     this.register(addDisposableDomListener(this.textarea, 'compositionupdate', (e: CompositionEvent) => this._compositionHelper.compositionupdate(e)));
     this.register(addDisposableDomListener(this.textarea, 'compositionend', () => this._compositionHelper.compositionend()));
-    this.register(this.addDisposableListener('refresh', () => this._compositionHelper.updateCompositionElements()));
-    this.register(this.addDisposableListener('refresh', (data) => this._queueLinkification(data.start, data.end)));
+    this.register(this.addDisposableListener('refresh', (data) => this._postRefresh(data)));
+  }
+
+  private _postRefresh(data: { start: number, end: number }) {
+    // If we're in the middle of a composition, let the CompositionHelper
+    // position/resize the textarea so IMEs are correctly positioned, otherwise,
+    // we keep it in sync with the cursor in case emoji input is triggered
+    // (which is not an IME)
+    if (this._compositionHelper.isComposing) {
+      this._compositionHelper.updateCompositionElements();
+    } else {
+      this._updateTextArea();
+    }
+    this._queueLinkification(data.start, data.end);
+  }
+
+  /**
+   * Sync the textarea to the exact position of the cursor so if the user
+   * triggers emoji input, it shows up right under the cursor
+   */
+  private _updateTextArea() {
+    const cellHeight = Math.ceil(this.charMeasure.height * this.options.lineHeight);
+    const cursorTop = this.buffer.y * cellHeight;
+    const cursorLeft = this.buffer.x * this.charMeasure.width;
+    const { width, height } = this.charMeasure;
+    this.textarea.style.left = cursorLeft + 'px';
+    this.textarea.style.top = cursorTop + 'px';
+    this.textarea.style.width = width + 'px';
+    this.textarea.style.height = height + 'px';
+    this.textarea.style.lineHeight = height + 'px';
   }
 
   /**
@@ -1502,6 +1533,13 @@ export class Terminal extends EventEmitter implements ITerminal, IDisposable, II
   public selectLines(start: number, end: number): void {
     if (this.selectionManager) {
       this.selectionManager.selectLines(start, end);
+    }
+  }
+
+  protected _onInput(event: IDOMInputEvent) {
+    if (event.inputType === 'insertText' && isEmoji(event.data)) {
+      this.showCursor();
+      this.handler(event.data);
     }
   }
 

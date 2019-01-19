@@ -21,6 +21,9 @@ export class CompositionHelper {
    * IME. This variable determines whether the compositionText should be displayed on the UI.
    */
   private _isComposing: boolean;
+  public get isComposing(): boolean {
+    return this._isComposing;
+  }
 
   /**
    * The position within the input textarea's value of the current composition.
@@ -89,7 +92,7 @@ export class CompositionHelper {
       if (ev.keyCode === 229) {
         // Continue composing if the keyCode is the "composition character"
         return false;
-      } else if (ev.keyCode === 16 || ev.keyCode === 17 || ev.keyCode === 18) {
+      } else if (ev.keyCode === 16 || ev.keyCode === 17 || ev.keyCode === 18 || ev.keyCode === 91 || ev.keyCode === 92) {
         // Continue composing if the keyCode is a modifier key
         return false;
       }
@@ -206,11 +209,13 @@ export class CompositionHelper {
       // Sync the textarea to the exact position of the composition view so the IME knows where the
       // text is.
       const compositionViewBounds = this._compositionView.getBoundingClientRect();
+      const width = Math.max(compositionViewBounds.width, this._terminal.charMeasure.width);
+      const height = Math.max(compositionViewBounds.height, this._terminal.charMeasure.height);
       this._textarea.style.left = cursorLeft + 'px';
       this._textarea.style.top = cursorTop + 'px';
-      this._textarea.style.width = compositionViewBounds.width + 'px';
-      this._textarea.style.height = compositionViewBounds.height + 'px';
-      this._textarea.style.lineHeight = compositionViewBounds.height + 'px';
+      this._textarea.style.width = width + 'px';
+      this._textarea.style.height = height + 'px';
+      this._textarea.style.lineHeight = height + 'px';
     }
 
     if (!dontRecurse) {
