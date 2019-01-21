@@ -24,6 +24,11 @@ import { addDisposableDomListener } from '../../ui/Lifecycle';
 
 export const INDICIES_PER_CELL = 4;
 
+interface IPendingRecover {
+  renderer: WebglRenderer;
+  justLost: boolean
+}
+
 export class WebglRenderer extends EventEmitter implements IRenderer {
   private _renderDebouncer: RenderDebouncer;
   private _renderLayers: IRenderLayer[];
@@ -56,7 +61,7 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
     private _lru: ITerminal[] = [];
 
     // Renderers that lost context and need to be recreated
-    private _pendingRecover: WebglRenderer[] = [];
+    private _pendingRecover: IPendingRecover[] = [];
 
     // Called when a renderer is created or unpaused to signify that the user
     // just used this terminal. Terminals are kept in least-recently-used order,
@@ -80,33 +85,36 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
       this._lru.splice(index, 1);
     }
 
-    public recoverContext(renderer: WebglRenderer) {
-      this._pendingRecover.push(renderer);
+    public recoverContext(renderer: WebglRenderer, justLost: boolean) {
+      this._pendingRecover.push({ renderer, justLost });
       if (!this._recoverTimeout) {
         this._recoverTimeout = setTimeout(() => {
           this._recoverTimeout = null;
 
           // webglcontextlost can fire before resize observer, which means that some
-          // of the renderers that are pending recovery, might not actually need it,
-          // if they were paused
-          const toRecover = this._pendingRecover.filter(({ _isPaused }) => !_isPaused);
+          // of the renderers that are pending recovery, might not actually need it
+          // if they are now paused
+          const toRecover = this._pendingRecover.filter(({ renderer }) => !renderer._isPaused);
           this._pendingRecover = [];
-          this._recoverPendingContexts(toRecover)
+          if (toRecover.length > 0) {
+            this._recoverPendingContexts(toRecover)
+          }
         }, 0);
       }
     }
 
-    private _recoverPendingContexts(toRecover: WebglRenderer[]) {
-      // This terminal's context was lost but it's not paused, try to dispose the
-      // paused renderers to make room for this one
+    private _recoverPendingContexts(toRecover: IPendingRecover[]) {
+      // try to kill some paused renderers to make room for this one
       let killCount = 0;
       for (let term of this._lru) {
         const renderer = <WebglRenderer>term.renderer;
         if (renderer._isPaused && !renderer._gl.isContextLost()) {
-          renderer._gl.getExtension('WEBGL_lose_context').loseContext()
+          // Prevent this renderer from being immediately recreated when
+          // webglcontextlost fires
+          renderer.loseContext();
           renderer._salvaged = true;
 
-          // Only kill enough to recover all the pending contexts
+          // Only kill enough renderers to recover all the pending contexts
           killCount++;
           if (killCount >= toRecover.length) {
             break;
@@ -114,14 +122,21 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
         }
       }
 
-      // If we managed to release some resources, try to recreate thes renderer
-      if (killCount > 0) {
-        toRecover.forEach((renderer) => {
-          renderer._terminal.recreateRenderer()
-        });
-      } else {
+      // If any of these contexts were *just* lost, it means that we're currently
+      // at a resource limit, but if we failed to release any resources
+      // (i.e. everything is unpaused), there's no point in trying to recreate a
+      // renderer because we would be killing an unpaused one. In this case,
+      // just give up.
+      const requireKill = toRecover.some(({ justLost }) => justLost);
+      if (requireKill && killCount === 0) {
         console.error('Too many simultaneous webgl contexts');
+        return;
       }
+
+      // Recreate these renderer
+      toRecover.forEach(({ renderer }) => {
+        renderer._terminal.recreateRenderer()
+      });
     }
   }
 
@@ -193,7 +208,15 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
     this._canvas.width = 0;
     this._canvas.height = 0;
 
+    if (!this._gl.isContextLost()) {
+      console.log('Force context loss');
+      this.loseContext();
+    }
     WebglRenderer._contextHelper.onRendererDestroyed(this);
+  }
+
+  public loseContext(): void {
+    this._gl.getExtension('WEBGL_lose_context').loseContext()
   }
 
   private _onContextLost(): void {
@@ -202,7 +225,7 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
       return;
     }
 
-    WebglRenderer._contextHelper.recoverContext(this);
+    WebglRenderer._contextHelper.recoverContext(this, true);
   }
 
   private _onIntersectionChange(entry: IntersectionObserverEntry): void {
@@ -214,7 +237,7 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
         WebglRenderer._contextHelper.onRendererUnpaused(this);
       }
       if (this._gl.isContextLost()) {
-        WebglRenderer._contextHelper.recoverContext(this);
+        WebglRenderer._contextHelper.recoverContext(this, false);
 
         // Return here because this renderer will be re-created to acquire a
         // valid context, so there's no point in refreshing this one
