@@ -20,6 +20,7 @@ import { CHAR_DATA_ATTR_INDEX, CHAR_DATA_CODE_INDEX, CHAR_DATA_CHAR_INDEX, NULL_
 import { IWebGL2RenderingContext } from './Types';
 import { INVERTED_DEFAULT_COLOR, DEFAULT_COLOR } from '../atlas/Types';
 import { RenderModel, COMBINED_CHAR_BIT_MASK } from './RenderModel';
+import { addDisposableDomListener } from '../../ui/Lifecycle';
 
 export const INDICIES_PER_CELL = 4;
 
@@ -39,9 +40,90 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
 
   private _isPaused: boolean = false;
   private _needsFullRefresh: boolean = false;
+  private _salvaged: boolean = false;
 
   public dimensions: IRenderDimensions;
   public colorManager: ColorManager;
+
+  // Destroys paused renderes if the resources are needed for unpaused ones.
+  // This is unique to WebglRenderer because 'webgl2' contexts can become
+  // invalidated at any moment, typically by creating other canvases with
+  // 'webgl2' context, but also arbitrarily by the OS.
+  private static _contextHelper = new class {
+    private _recoverTimeout: any = null;
+
+    // Terminals ordered by least-recently-used first
+    private _lru: ITerminal[] = [];
+
+    // Renderers that lost context and need to be recreated
+    private _pendingRecover: WebglRenderer[] = [];
+
+    // Called when a renderer is created or unpaused to signify that the user
+    // just used this terminal. Terminals are kept in least-recently-used order,
+    // so that if resources are needed, we can sacrifice the least important
+    // ones
+    public onRendererUnpaused(renderer: WebglRenderer) {
+      const index = this._lru.indexOf(renderer._terminal);
+      if (index >= 0) {
+        this._lru.splice(index, 1);
+      }
+      this._lru.push(renderer._terminal);
+    }
+
+    public onRendererCreated(renderer: WebglRenderer) {
+      this.onRendererUnpaused(renderer);
+    }
+
+
+    public onRendererDestroyed(renderer: WebglRenderer) {
+      const index = this._lru.indexOf(renderer._terminal);
+      this._lru.splice(index, 1);
+    }
+
+    public recoverContext(renderer: WebglRenderer) {
+      this._pendingRecover.push(renderer);
+      if (!this._recoverTimeout) {
+        this._recoverTimeout = setTimeout(() => {
+          this._recoverTimeout = null;
+
+          // webglcontextlost can fire before resize observer, which means that some
+          // of the renderers that are pending recovery, might not actually need it,
+          // if they were paused
+          const toRecover = this._pendingRecover.filter(({ _isPaused }) => !_isPaused);
+          this._pendingRecover = [];
+          this._recoverPendingContexts(toRecover)
+        }, 0);
+      }
+    }
+
+    private _recoverPendingContexts(toRecover: WebglRenderer[]) {
+      // This terminal's context was lost but it's not paused, try to dispose the
+      // paused renderers to make room for this one
+      let killCount = 0;
+      for (let term of this._lru) {
+        const renderer = <WebglRenderer>term.renderer;
+        if (renderer._isPaused && !renderer._gl.isContextLost()) {
+          renderer._gl.getExtension('WEBGL_lose_context').loseContext()
+          renderer._salvaged = true;
+
+          // Only kill enough to recover all the pending contexts
+          killCount++;
+          if (killCount >= toRecover.length) {
+            break;
+          }
+        }
+      }
+
+      // If we managed to release some resources, try to recreate thes renderer
+      if (killCount > 0) {
+        toRecover.forEach((renderer) => {
+          renderer._terminal.recreateRenderer()
+        });
+      } else {
+        console.error('Too many simultaneous webgl contexts');
+      }
+    }
+  }
 
   constructor(
     private _terminal: ITerminal,
@@ -87,6 +169,7 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
     if (!this._gl) {
         throw new Error('WebGL2 not supported');
     }
+    this.register(addDisposableDomListener(this._canvas, 'webglcontextlost', () => { this._onContextLost() }));
     this._terminal.screenElement.appendChild(this._canvas);
 
     this._rectangleRenderer = new RectangleRenderer(this._terminal, this.colorManager, this._gl, this.dimensions);
@@ -95,26 +178,51 @@ export class WebglRenderer extends EventEmitter implements IRenderer {
     // Detect whether IntersectionObserver is detected and enable renderer pause
     // and resume based on terminal visibility if so
     if ('IntersectionObserver' in window) {
-      const observer = new IntersectionObserver(e => this.onIntersectionChange(e[0]), { threshold: 0 });
+      const observer = new IntersectionObserver(e => this._onIntersectionChange(e[0]), { threshold: 0 });
       observer.observe(this._terminal.element);
       this.register({ dispose: () => observer.disconnect() });
     }
+
+    WebglRenderer._contextHelper.onRendererCreated(this);
   }
 
   public dispose(): void {
     super.dispose();
     this._renderLayers.forEach(l => l.dispose());
     this._terminal.screenElement.removeChild(this._canvas);
+    this._canvas.width = 0;
+    this._canvas.height = 0;
+
+    WebglRenderer._contextHelper.onRendererDestroyed(this);
   }
 
-  public onIntersectionChange(entry: IntersectionObserverEntry): void {
-    this._isPaused = entry.intersectionRatio === 0;
-    if (this._gl.isContextLost()) {
-      this._terminal.recreateRenderer();
+  private _onContextLost(): void {
+    if (this._salvaged) {
+      this._salvaged = false;
       return;
     }
-    if (!this._isPaused && this._needsFullRefresh) {
-      this._terminal.refresh(0, this._terminal.rows - 1);
+
+    WebglRenderer._contextHelper.recoverContext(this);
+  }
+
+  private _onIntersectionChange(entry: IntersectionObserverEntry): void {
+    const wasPaused = this._isPaused;
+    this._isPaused = entry.intersectionRatio === 0;
+
+    if (!this._isPaused) {
+      if (wasPaused) {
+        WebglRenderer._contextHelper.onRendererUnpaused(this);
+      }
+      if (this._gl.isContextLost()) {
+        WebglRenderer._contextHelper.recoverContext(this);
+
+        // Return here because this renderer will be re-created to acquire a
+        // valid context, so there's no point in refreshing this one
+        return;
+      }
+      if (this._needsFullRefresh) {
+        this._terminal.refresh(0, this._terminal.rows - 1);
+      }
     }
   }
 
