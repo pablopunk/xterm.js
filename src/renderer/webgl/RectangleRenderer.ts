@@ -84,7 +84,7 @@ const INDICES_PER_RECTANGLE = 8;
 const BYTES_PER_RECTANGLE = INDICES_PER_RECTANGLE * Float32Array.BYTES_PER_ELEMENT;
 
 // Selection
-const ATTRIBUTES_PER_SELECTION_VERTEX = 4;
+const ATTRIBUTES_PER_SELECTION_VERTEX = 4
 const BYTES_PER_SELECTION_VERTEX = ATTRIBUTES_PER_SELECTION_VERTEX * Float32Array.BYTES_PER_ELEMENT;
 
 const INITIAL_BUFFER_RECTANGLE_CAPACITY = 20 * INDICES_PER_RECTANGLE;
@@ -100,7 +100,6 @@ export class RectangleRenderer {
   private _attributesBuffer: WebGLBuffer;
   private _projectionLocation: WebGLUniformLocation;
   private _bgFloat: Float32Array;
-  // @ts-ignore: value never read
   private _selectionFloat: Float32Array;
 
   private _selectionProgram: WebGLProgram;
