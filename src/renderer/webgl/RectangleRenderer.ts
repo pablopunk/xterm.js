@@ -47,50 +47,16 @@ void main() {
   outColor = vec4(v_color, 1);
 }`;
 
-const selectionVertexShaderSource = `#version 300 es
-layout (location = ${VertexAttribLocations.POSITION}) in vec2 a_position;
-layout (location = ${VertexAttribLocations.SIZE}) in vec2 a_size;
-
-uniform mat4 u_projection;
-uniform vec2 u_resolution;
-uniform float u_inset;
-
-void main() {
-  vec2 pos = a_position + a_size * u_inset;
-  gl_Position = u_projection * vec4(pos / u_resolution, 0.0, 1.0);
-}`;
-
-const selectionFragmentShaderSource = `#version 300 es
-precision mediump float;
-
-uniform vec3 u_color;
-
-out vec4 outColor;
-
-void main() {
-  outColor = vec4(u_color, 1);
-}`;
-
 interface IVertices {
   attributes: Float32Array;
+  selection: Float32Array;
   count: number;
-}
-interface ISelectionVertices {
-  vertices: Float32Array;
-  outlineIndices: Uint8Array;
 }
 
 const INDICES_PER_RECTANGLE = 8;
 const BYTES_PER_RECTANGLE = INDICES_PER_RECTANGLE * Float32Array.BYTES_PER_ELEMENT;
 
-// Selection
-const ATTRIBUTES_PER_SELECTION_VERTEX = 4;
-const BYTES_PER_SELECTION_VERTEX = ATTRIBUTES_PER_SELECTION_VERTEX * Float32Array.BYTES_PER_ELEMENT;
-
 const INITIAL_BUFFER_RECTANGLE_CAPACITY = 20 * INDICES_PER_RECTANGLE;
-
-const SELECTION_VERTEX_COUNT = 10;
-const SELECTION_OUTLINE_INDEX_COUNT = 16;
 
 export class RectangleRenderer {
 
@@ -100,26 +66,12 @@ export class RectangleRenderer {
   private _attributesBuffer: WebGLBuffer;
   private _projectionLocation: WebGLUniformLocation;
   private _bgFloat: Float32Array;
-  // @ts-ignore: value never read
   private _selectionFloat: Float32Array;
-
-  private _selectionProgram: WebGLProgram;
-  private _selectionVao: IWebGLVertexArrayObject;
-  private _selectionOutlineVao: IWebGLVertexArrayObject;
-  private _selectionAttributesBuffer: WebGLBuffer;
-  private _selectionResolutionLocation: WebGLUniformLocation;
-  private _selectionProjectionLocation: WebGLUniformLocation;
-  private _selectionColorLocation: WebGLUniformLocation;
-  private _selectionInsetLocation: WebGLUniformLocation;
 
   private _vertices: IVertices = {
     count: 0,
     attributes: new Float32Array(INITIAL_BUFFER_RECTANGLE_CAPACITY),
-  };
-
-  private _selectionVertices: ISelectionVertices = {
-    vertices: new Float32Array(SELECTION_VERTEX_COUNT * 4),
-    outlineIndices: new Uint8Array(SELECTION_OUTLINE_INDEX_COUNT),
+    selection: new Float32Array(3 * INDICES_PER_RECTANGLE)
   };
 
   constructor(
@@ -131,16 +83,10 @@ export class RectangleRenderer {
     const gl = this._gl;
 
     this._program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
-    this._selectionProgram = createProgram(gl, selectionVertexShaderSource, selectionFragmentShaderSource);
 
     // Uniform locations
     this._resolutionLocation = gl.getUniformLocation(this._program, 'u_resolution');
     this._projectionLocation = gl.getUniformLocation(this._program, 'u_projection');
-
-    this._selectionResolutionLocation = gl.getUniformLocation(this._selectionProgram, 'u_resolution');
-    this._selectionProjectionLocation = gl.getUniformLocation(this._selectionProgram, 'u_projection');
-    this._selectionColorLocation = gl.getUniformLocation(this._selectionProgram, 'u_color');
-    this._selectionInsetLocation = gl.getUniformLocation(this._selectionProgram, 'u_inset');
 
     // Create and set the vertex array object
     this._vertexArrayObject = gl.createVertexArray();
@@ -174,46 +120,6 @@ export class RectangleRenderer {
     gl.vertexAttribPointer(VertexAttribLocations.COLOR, 4, gl.FLOAT, false, BYTES_PER_RECTANGLE, 4 * Float32Array.BYTES_PER_ELEMENT);
     gl.vertexAttribDivisor(VertexAttribLocations.COLOR, 1);
 
-    this._selectionVao = gl.createVertexArray();
-    gl.bindVertexArray(this._selectionVao);
-
-      //      0-----------1
-      //      |           |
-      // 4----2-----------3
-      // |                |
-      // 5-------------7--6
-      // |             |
-      // 8-------------9
-    const selectionIndexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, selectionIndexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array([
-      0, 1, 2,
-      2, 1, 3,
-      4, 3, 5,
-      5, 3, 6,
-      5, 7, 8,
-      8, 7, 9,
-    ]), gl.STATIC_DRAW)
-
-    this._selectionAttributesBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this._selectionAttributesBuffer);
-    gl.enableVertexAttribArray(VertexAttribLocations.POSITION);
-    gl.vertexAttribPointer(VertexAttribLocations.POSITION, 2, gl.FLOAT, false, BYTES_PER_SELECTION_VERTEX, 0);
-    gl.enableVertexAttribArray(VertexAttribLocations.SIZE);
-    gl.vertexAttribPointer(VertexAttribLocations.SIZE, 2, gl.FLOAT, false, BYTES_PER_SELECTION_VERTEX, 2 * Float32Array.BYTES_PER_ELEMENT);
-
-    this._selectionOutlineVao = gl.createVertexArray();
-    gl.bindVertexArray(this._selectionOutlineVao);
-
-    const outlineIndexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, outlineIndexBuffer);
-    gl.enableVertexAttribArray(VertexAttribLocations.POSITION);
-    gl.vertexAttribPointer(VertexAttribLocations.POSITION, 2, gl.FLOAT, false, BYTES_PER_SELECTION_VERTEX, 0);
-    gl.enableVertexAttribArray(VertexAttribLocations.SIZE);
-    gl.vertexAttribPointer(VertexAttribLocations.SIZE, 2, gl.FLOAT, false, BYTES_PER_SELECTION_VERTEX, 2 * Float32Array.BYTES_PER_ELEMENT);
-
-    gl.bindVertexArray(null);
-
     this._updateCachedColors();
   }
 
@@ -232,39 +138,10 @@ export class RectangleRenderer {
     gl.bufferData(gl.ARRAY_BUFFER, this._vertices.attributes, gl.DYNAMIC_DRAW);
     gl.drawElementsInstanced(this._gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0, this._vertices.count);
 
-    this.renderSelection();
-  }
-
-  // TODO: extract this to SelectionRenderer.ts?
-  public renderSelection(): void {
-    if (!this._selectionVertices) {
-      return;
-    }
-    const gl = this._gl;
-    gl.useProgram(this._selectionProgram);
-
-    // Draw fill
-    gl.bindVertexArray(this._selectionVao);
-
-    gl.uniformMatrix4fv(this._selectionProjectionLocation, false, PROJECTION_MATRIX);
-    gl.uniform2f(this._selectionResolutionLocation, gl.canvas.width, gl.canvas.height);
-    gl.uniform1f(this._selectionInsetLocation, 0);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, this._selectionAttributesBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this._selectionVertices.vertices, gl.DYNAMIC_DRAW);
-    gl.uniform3f(this._selectionColorLocation, 1, 1, 1);
-    gl.drawElements(this._gl.TRIANGLES, 6 * 3, gl.UNSIGNED_BYTE, 0);
-
-    // Draw outline
-    gl.bindVertexArray(this._selectionOutlineVao);
-
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this._selectionVertices.outlineIndices, gl.DYNAMIC_DRAW);
-    gl.uniform3f(this._selectionColorLocation, 0, 0, 0);
-    gl.uniform1f(this._selectionInsetLocation, 1);
-    gl.drawElements(this._gl.LINES, SELECTION_OUTLINE_INDEX_COUNT, gl.UNSIGNED_BYTE, 0);
-
-    // Unbind VAO
-    gl.bindVertexArray(null);
+    // Bind selection buffer and draw
+    gl.bindBuffer(gl.ARRAY_BUFFER, this._attributesBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this._vertices.selection, gl.DYNAMIC_DRAW);
+    gl.drawElementsInstanced(this._gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0, 3);
   }
 
   public onResize(): void {
@@ -298,65 +175,65 @@ export class RectangleRenderer {
     const terminal = this._terminal;
 
     if (!model.hasSelection) {
-      fill(this._selectionVertices.vertices, 0, 0);
+      fill(this._vertices.selection, 0, 0);
       return;
     }
 
-    const w = this._dimensions.scaledCellWidth;
-    const h = this._dimensions.scaledCellHeight;
-    const startRow = model.viewportCappedStartRow;
-    const endRow = model.viewportCappedEndRow;
-    const startCol = model.viewportStartRow === startRow ? model.startCol : 0;
-    const endCol = model.viewportEndRow === endRow ? model.endCol : terminal.cols;
-    const { vertices, outlineIndices } = this._selectionVertices;
     if (columnSelectMode) {
-      const v0 = { x: startCol, y: startRow };
-      const v1 = { x: endCol, y: startRow };
-      const v2 = { x: startCol, y: endRow + 1 };
-      const v3 = { x: endCol, y: endRow + 1 };
-      vertices.set([
-        w * v0.x, h * v0.y, +1, +1, // v0
-        w * v1.x, h * v1.y, -1, +1, // v1
-        w * v2.x, h * v2.y, +1, +1, // v2
-        w * v3.x, h * v3.y, -1, +1, // v3
-      ]);
-      fill(this._selectionVertices.vertices, 0, 4 * 4);
-      outlineIndices.set([0, 1, 1, 3, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      const startCol = model.startCol;
+      const width = model.endCol - startCol;
+      const height = model.viewportCappedEndRow - model.viewportCappedStartRow + 1;
+      this._addRectangleFloat(
+        this._vertices.selection,
+        0,
+        startCol * this._dimensions.scaledCellWidth,
+        model.viewportCappedStartRow * this._dimensions.scaledCellHeight,
+        width * this._dimensions.scaledCellWidth,
+        height * this._dimensions.scaledCellHeight,
+        this._selectionFloat
+      );
+      fill(this._vertices.selection, 0, INDICES_PER_RECTANGLE);
     } else {
-      const startRowEndCol = startRow === endRow ? model.endCol : terminal.cols;
-      const middleRowsCount = Math.max(endRow - startRow - 1, 0);
+      // Draw first row
+      const startCol = model.viewportStartRow === model.viewportCappedStartRow ? model.startCol : 0;
+      const startRowEndCol = model.viewportCappedStartRow === model.viewportCappedEndRow ? model.endCol : terminal.cols;
+      this._addRectangleFloat(
+        this._vertices.selection,
+        0,
+        startCol * this._dimensions.scaledCellWidth,
+        model.viewportCappedStartRow * this._dimensions.scaledCellHeight,
+        (startRowEndCol - startCol) * this._dimensions.scaledCellWidth,
+        this._dimensions.scaledCellHeight,
+        this._selectionFloat
+      );
 
-      // Vertices in the format (x, y, insetX, insetY).
-      //      0-----------1
-      //      |           |
-      // 4----2-----------3
-      // |                |
-      // 5-------------7--6
-      // |             |
-      // 8-------------9
-      const v0 = { x: startCol, y: startRow };
-      const v4 = { x: 0, y: v0.y + 1 };
-      const v6 = { x: startRowEndCol, y: v4.y + middleRowsCount };
-      const v9 = { x: endCol, y: endRow + 1 };
-      vertices.set([
-        w * v0.x, h * v0.y, +1, +1, // v0
-        w * v6.x, h * v0.y, -1, +1, // v1
-        w * v0.x, h * v4.y, +1, +1, // v2
-        w * v6.x, h * v4.y, -1, +1, // v3
-        w * v4.x, h * v4.y, +1, +1, // v4
-        w * v4.x, h * v6.y, +1, +1, // v5
-        w * v6.x, h * v6.y, -1, -1, // v6
-        w * v9.x, h * v6.y, -1, -1, // v7
-        w * v4.x, h * v9.y, +1, -1, // v8
-        w * v9.x, h * v9.y, -1, -1, // v9
-      ]);
+      // Draw middle rows
+      const middleRowsCount = Math.max(model.viewportCappedEndRow - model.viewportCappedStartRow - 1, 0);
+      this._addRectangleFloat(
+        this._vertices.selection,
+        INDICES_PER_RECTANGLE,
+        0,
+        (model.viewportCappedStartRow + 1) * this._dimensions.scaledCellHeight,
+        terminal.cols * this._dimensions.scaledCellWidth,
+        middleRowsCount * this._dimensions.scaledCellHeight,
+        this._selectionFloat
+      );
 
-      if (endRow - startRow === 0) {
-        outlineIndices.set([0, 1, 1, 3, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-      } else if (endRow - startRow === 1 && startCol > endCol) {
-        outlineIndices.set([0, 1, 1, 3, 3, 2, 2, 0, 5, 7, 7, 9, 9, 8, 8, 5]);
+      // Draw final row
+      if (model.viewportCappedStartRow !== model.viewportCappedEndRow) {
+        // Only draw viewportEndRow if it's not the same as viewportStartRow
+        const endCol = model.viewportEndRow === model.viewportCappedEndRow ? model.endCol : terminal.cols;
+        this._addRectangleFloat(
+          this._vertices.selection,
+          INDICES_PER_RECTANGLE * 2,
+          0,
+          model.viewportCappedEndRow * this._dimensions.scaledCellHeight,
+          endCol * this._dimensions.scaledCellWidth,
+          this._dimensions.scaledCellHeight,
+          this._selectionFloat
+        );
       } else {
-        outlineIndices.set([0, 1, 1, 6, 6, 7, 7, 9, 9, 8, 8, 4, 4, 2, 2, 0]);
+        fill(this._vertices.selection, 0, INDICES_PER_RECTANGLE * 2);
       }
     }
   }
